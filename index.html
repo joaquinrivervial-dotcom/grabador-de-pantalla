@@ -34,7 +34,7 @@ video{display:none;width:100%;margin-top:20px;background:#111;border-radius:12px
 <div class="app">
 <header>
 <h1>Grabador de pantalla</h1>
-<div class="sub">Captura pantalla, ventana o pestaÒa con audio. Funciona en PC y Android.</div>
+<div class="sub">Captura pantalla, ventana o pesta√±a con audio. Funciona en PC y Android.</div>
 </header>
 <main>
 <div class="status"><span id="dot" class="dot"></span><span id="status">Listo para grabar</span></div>
@@ -42,35 +42,35 @@ video{display:none;width:100%;margin-top:20px;background:#111;border-radius:12px
 <div class="grid">
 <div class="field"><label>CALIDAD</label>
 <select id="quality">
-<option value="720" selected>720p ó recomendada (PCs lentas)</option>
+<option value="720" selected>720p ‚Äî recomendada (PCs lentas)</option>
 <option value="1080">1080p</option>
-<option value="source">ResoluciÛn original</option>
+<option value="source">Resoluci√≥n original</option>
 </select></div>
 <div class="field"><label>FPS</label>
 <select id="fps">
-<option value="24" selected>24 FPS ó recomendada</option>
+<option value="24" selected>24 FPS ‚Äî recomendada</option>
 <option value="30">30 FPS</option>
 <option value="60">60 FPS</option>
 </select></div>
 </div>
 <div class="controls">
-<button id="start">? Iniciar grabaciÛn</button>
-<button id="stop" disabled>¶ Detener</button>
-<button id="save" disabled>? Guardar WebM</button>
-<button id="mp4" disabled>? Convertir a MP4</button>
+<button id="start">‚óè Iniciar grabaci√≥n</button>
+<button id="stop" disabled>‚ñ† Detener</button>
+<button id="save" disabled>‚Üì Guardar WebM</button>
+<button id="mp4" disabled>‚á© Convertir a MP4</button>
 </div>
 <video id="preview" controls></video>
 <div id="filebox" class="filebox"></div>
 <div class="info">
 <b>Recomendado para PCs lentas / Android:</b> 720p + 24 FPS.<br><br>
 <b>Audio:</b> Al iniciar, activa <b>Compartir audio</b> en el selector del navegador.<br><br>
-<b>MP4:</b> La conversiÛn usa FFmpeg en el navegador. La primera vez descarga ~30 MB.
+<b>MP4:</b> La conversi√≥n usa FFmpeg en el navegador. La primera vez descarga ~30 MB.
 </div>
 
 <div class="converter">
-  <h2>Conversor manual WebM ? MP4</h2>
+  <h2>Conversor manual WebM ‚Üí MP4</h2>
   <div class="desc">
-    Sube el archivo <b>.webm</b> que descargaste y conviÈrtelo a MP4.
+    Sube el archivo <b>.webm</b> que descargaste y convi√©rtelo a MP4.
   </div>
   <div class="upload-row">
     <input type="file" id="webmFile" accept="video/webm,.webm,video/*">
@@ -121,14 +121,14 @@ async function startRecording(){
       recordedBlob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
       preview.src=URL.createObjectURL(recordedBlob);preview.style.display='block';
       saveBtn.disabled=false;mp4Btn.disabled=false;
-      filebox.style.display='block';filebox.textContent='GrabaciÛn lista. Puedes guardar WebM o convertirla a MP4.';
-      statusEl.textContent='GrabaciÛn detenida ó archivo listo';dot.classList.remove('live');
+      filebox.style.display='block';filebox.textContent='Grabaci√≥n lista. Puedes guardar WebM o convertirla a MP4.';
+      statusEl.textContent='Grabaci√≥n detenida ‚Äî archivo listo';dot.classList.remove('live');
     };
-    recorder.onerror=e=>{console.error(e);statusEl.textContent='Error durante la grabaciÛn'};
+    recorder.onerror=e=>{console.error(e);statusEl.textContent='Error durante la grabaci√≥n'};
     stream.getVideoTracks()[0].addEventListener('ended',()=>stopRecording());
     recorder.start(1000);
     startTime=Date.now();timerInterval=setInterval(updateTimer,250);
-    startBtn.disabled=true;stopBtn.disabled=false;statusEl.textContent='GrabandoÖ';dot.classList.add('live');
+    startBtn.disabled=true;stopBtn.disabled=false;statusEl.textContent='Grabando‚Ä¶';dot.classList.add('live');
   }catch(e){
     console.error(e);stopTracks();clearInterval(timerInterval);
     statusEl.textContent=e.name==='NotAllowedError'?'Captura cancelada':'No se pudo iniciar la captura';
@@ -156,22 +156,46 @@ startBtn.onclick = startRecording;
 stopBtn.onclick = stopRecording;
 saveBtn.onclick=()=>{if(recordedBlob)downloadBlob(recordedBlob,filename('webm'))};
 
+/* ========== FUNCI√ìN DE CONVERSI√ìN CORREGIDA ========== */
 async function convertBlobToMp4(blob, downloadName, statusCallback){
-  if(statusCallback) statusCallback('Cargando FFmpeg...');
+  if(statusCallback) statusCallback('Cargando librer√≠as...');
+
   const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
   const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
 
   const ffmpeg = new FFmpeg();
+
+  // Convertimos el worker a Blob URL (soluciona el error de origen)
+  const workerURL = await toBlobURL(
+    'https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js',
+    'text/javascript'
+  );
+
   const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+
+  if(statusCallback) statusCallback('Cargando FFmpeg (~30 MB la primera vez)...');
 
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
     wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+    classWorkerURL: workerURL
   });
 
   if(statusCallback) statusCallback('Convirtiendo... (puede tardar varios minutos)');
+
   await ffmpeg.writeFile('input.webm', new Uint8Array(await blob.arrayBuffer()));
-  await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','veryfast','-crf','23','-c:a','aac','-b:a','128k','-movflags','+faststart','output.mp4']);
+
+  await ffmpeg.exec([
+    '-i', 'input.webm',
+    '-c:v', 'libx264',
+    '-preset', 'veryfast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    'output.mp4'
+  ]);
+
   const data = await ffmpeg.readFile('output.mp4');
   const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
   downloadBlob(mp4Blob, downloadName);
@@ -181,7 +205,7 @@ mp4Btn.onclick=async()=>{
   if(!recordedBlob)return;
   mp4Btn.disabled=true;
   filebox.style.display='block';
-  filebox.textContent='Preparando conversiÛn MP4Ö';
+  filebox.textContent='Preparando conversi√≥n MP4‚Ä¶';
   try{
     await convertBlobToMp4(recordedBlob, filename('mp4'), (msg)=>filebox.textContent=msg);
     filebox.textContent='MP4 generado y descargado correctamente.';
@@ -213,14 +237,14 @@ convertBtn.addEventListener('click', async () => {
   const file = webmFileInput.files?.[0];
   if(!file) return;
   convertBtn.disabled = true;
-  setConvertStatus('info', 'Iniciando conversiÛn...');
+  setConvertStatus('info', 'Iniciando conversi√≥n...');
   try {
     const name = file.name.replace(/\.webm$/i, '') || 'video';
     await convertBlobToMp4(file, name + '.mp4', (msg) => setConvertStatus('info', msg));
-    setConvertStatus('success', '? MP4 descargado correctamente.');
+    setConvertStatus('success', '‚úÖ MP4 descargado correctamente.');
   } catch (e) {
     console.error(e);
-    setConvertStatus('error', '? Error: ' + (e.message || e) + '\nPrueba con un archivo m·s corto o usa un conversor online.');
+    setConvertStatus('error', '‚ùå Error: ' + (e.message || e) + '\nPrueba con un archivo m√°s corto o usa un conversor online.');
   } finally {
     convertBtn.disabled = false;
   }
