@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Grabador de pantalla</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f6f8fb;color:#202124;font-family:Arial,Helvetica,sans-serif;min-height:100vh;display:flex;justify-content:center;align-items:center;padding:24px}
+.app{width:min(820px,100%);background:#fff;border:1px solid #dadce0;border-radius:18px;box-shadow:0 8px 30px rgba(60,64,67,.15);overflow:hidden}
+header{padding:25px 30px;border-bottom:1px solid #e8eaed}h1{margin:0 0 7px;font-size:25px;font-weight:600}.sub{color:#5f6368;font-size:14px;line-height:1.5}
+main{padding:30px}.status{padding:14px 16px;border-radius:12px;background:#f1f3f4;margin-bottom:20px;font-size:14px;display:flex;gap:10px;align-items:center}.dot{width:10px;height:10px;border-radius:50%;background:#9aa0a6}.dot.live{background:#d93025;box-shadow:0 0 0 5px #fce8e6}
+.timer{font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;margin:15px 0 22px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-bottom:20px}.field{border:1px solid #dadce0;border-radius:12px;padding:14px}.field label{display:block;font-size:12px;color:#5f6368;margin-bottom:8px}.field select{width:100%;padding:10px;border:1px solid #dadce0;border-radius:8px;background:white;font-size:14px}
+.controls{display:flex;gap:10px;flex-wrap:wrap}button{border:0;border-radius:10px;padding:13px 18px;font-size:15px;font-weight:600;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}
+#start{background:#1a73e8;color:#fff}#stop{background:#fce8e6;color:#c5221f}#save{background:#188038;color:#fff}#mp4{background:#9334e6;color:#fff}
+.info{margin-top:23px;padding:17px;border:1px solid #dadce0;border-radius:12px;font-size:13px;line-height:1.65;color:#5f6368}
+video{display:none;width:100%;margin-top:20px;background:#111;border-radius:12px;max-height:410px}.filebox{display:none;margin-top:15px;padding:14px;border-radius:10px;background:#e6f4ea;color:#137333;font-size:13px}
+
+.converter{margin-top:28px;padding:20px;border:1px solid #dadce0;border-radius:14px;background:#f8f9fa}
+.converter h2{margin:0 0 8px;font-size:18px;font-weight:600}
+.converter .desc{color:#5f6368;font-size:13px;margin-bottom:16px;line-height:1.5}
+.converter .upload-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.converter input[type="file"]{font-size:14px}
+#convertBtn{background:#9334e6;color:#fff}
+#convertStatus{margin-top:12px;padding:12px 14px;border-radius:10px;font-size:13px;display:none;line-height:1.5}
+#convertStatus.info{background:#e8f0fe;color:#1a73e8;display:block}
+#convertStatus.success{background:#e6f4ea;color:#137333;display:block}
+#convertStatus.error{background:#fce8e6;color:#c5221f;display:block}
+
+@media(max-width:620px){main,header{padding:22px}.grid{grid-template-columns:1fr}.controls button{width:100%}.converter .upload-row{flex-direction:column;align-items:stretch}}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+<h1>Grabador de pantalla</h1>
+<div class="sub">Captura pantalla, ventana o pestaña con audio. Funciona en PC y Android.</div>
+</header>
+<main>
+<div class="status"><span id="dot" class="dot"></span><span id="status">Listo para grabar</span></div>
+<div id="timer" class="timer">00:00:00</div>
+<div class="grid">
+<div class="field"><label>CALIDAD</label>
+<select id="quality">
+<option value="720" selected>720p — recomendada (PCs lentas)</option>
+<option value="1080">1080p</option>
+<option value="source">Resolución original</option>
+</select></div>
+<div class="field"><label>FPS</label>
+<select id="fps">
+<option value="24" selected>24 FPS — recomendada</option>
+<option value="30">30 FPS</option>
+<option value="60">60 FPS</option>
+</select></div>
+</div>
+<div class="controls">
+<button id="start">? Iniciar grabación</button>
+<button id="stop" disabled>¦ Detener</button>
+<button id="save" disabled>? Guardar WebM</button>
+<button id="mp4" disabled>? Convertir a MP4</button>
+</div>
+<video id="preview" controls></video>
+<div id="filebox" class="filebox"></div>
+<div class="info">
+<b>Recomendado para PCs lentas / Android:</b> 720p + 24 FPS.<br><br>
+<b>Audio:</b> Al iniciar, activa <b>Compartir audio</b> en el selector del navegador.<br><br>
+<b>MP4:</b> La conversión usa FFmpeg en el navegador. La primera vez descarga ~30 MB.
+</div>
+
+<div class="converter">
+  <h2>Conversor manual WebM ? MP4</h2>
+  <div class="desc">
+    Sube el archivo <b>.webm</b> que descargaste y conviértelo a MP4.
+  </div>
+  <div class="upload-row">
+    <input type="file" id="webmFile" accept="video/webm,.webm,video/*">
+    <button id="convertBtn" disabled>Convertir a MP4</button>
+  </div>
+  <div id="convertStatus"></div>
+</div>
+</main>
+</div>
+
+<script>
+let recorder=null,stream=null,chunks=[],recordedBlob=null,startTime=0,timerInterval=null;
+const $=id=>document.getElementById(id);
+const startBtn=$('start'),stopBtn=$('stop'),saveBtn=$('save'),mp4Btn=$('mp4');
+const statusEl=$('status'),dot=$('dot'),timerEl=$('timer'),preview=$('preview'),filebox=$('filebox');
+
+function formatTime(ms){
+  const s=Math.floor(ms/1000),h=String(Math.floor(s/3600)).padStart(2,'0'),
+  m=String(Math.floor((s%3600)/60)).padStart(2,'0'),sec=String(s%60).padStart(2,'0');
+  return `${h}:${m}:${sec}`;
+}
+function updateTimer(){timerEl.textContent=formatTime(Date.now()-startTime)}
+function stopTracks(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+function supportedType(){
+  const candidates=['video/webm;codecs=vp8,opus','video/webm;codecs=vp9,opus','video/webm'];
+  return candidates.find(x=>MediaRecorder.isTypeSupported(x))||'';
+}
+function constraints(){
+  const q=$('quality').value,fps=Number($('fps').value);
+  const video={frameRate:{ideal:fps,max:fps}};
+  if(q!=='source'){
+    const height=Number(q);
+    video.height={ideal:height,max:height};
+    video.width={ideal:Math.round(height*16/9),max:Math.round(height*16/9)};
+  }
+  return {video,audio:true};
+}
+
+async function startRecording(){
+  if(!navigator.mediaDevices?.getDisplayMedia){alert('Tu navegador no admite captura de pantalla.');return}
+  try{
+    chunks=[];recordedBlob=null;saveBtn.disabled=true;mp4Btn.disabled=true;filebox.style.display='none';preview.style.display='none';
+    stream=await navigator.mediaDevices.getDisplayMedia(constraints());
+    const mime=supportedType();
+    recorder=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:4000000,audioBitsPerSecond:128000}:{});
+    recorder.ondataavailable=e=>{if(e.data?.size)chunks.push(e.data)};
+    recorder.onstop=()=>{
+      recordedBlob=new Blob(chunks,{type:recorder.mimeType||'video/webm'});
+      preview.src=URL.createObjectURL(recordedBlob);preview.style.display='block';
+      saveBtn.disabled=false;mp4Btn.disabled=false;
+      filebox.style.display='block';filebox.textContent='Grabación lista. Puedes guardar WebM o convertirla a MP4.';
+      statusEl.textContent='Grabación detenida — archivo listo';dot.classList.remove('live');
+    };
+    recorder.onerror=e=>{console.error(e);statusEl.textContent='Error durante la grabación'};
+    stream.getVideoTracks()[0].addEventListener('ended',()=>stopRecording());
+    recorder.start(1000);
+    startTime=Date.now();timerInterval=setInterval(updateTimer,250);
+    startBtn.disabled=true;stopBtn.disabled=false;statusEl.textContent='Grabando…';dot.classList.add('live');
+  }catch(e){
+    console.error(e);stopTracks();clearInterval(timerInterval);
+    statusEl.textContent=e.name==='NotAllowedError'?'Captura cancelada':'No se pudo iniciar la captura';
+  }
+}
+
+function stopRecording(){
+  if(recorder&&recorder.state!=='inactive')recorder.stop();
+  stopTracks();clearInterval(timerInterval);stopBtn.disabled=true;startBtn.disabled=false;
+}
+
+function filename(ext){
+  const d=new Date();
+  const p=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('');
+  const t=[d.getHours(),String(d.getMinutes()).padStart(2,'0'),String(d.getSeconds()).padStart(2,'0')].join('');
+  return `grabacion_${p}_${t}.${ext}`;
+}
+function downloadBlob(blob,name){
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+}
+
+startBtn.onclick = startRecording;
+stopBtn.onclick = stopRecording;
+saveBtn.onclick=()=>{if(recordedBlob)downloadBlob(recordedBlob,filename('webm'))};
+
+async function convertBlobToMp4(blob, downloadName, statusCallback){
+  if(statusCallback) statusCallback('Cargando FFmpeg...');
+  const { FFmpeg } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+  const { toBlobURL } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+
+  const ffmpeg = new FFmpeg();
+  const baseURL = 'https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+
+  await ffmpeg.load({
+    coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+    wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+  });
+
+  if(statusCallback) statusCallback('Convirtiendo... (puede tardar varios minutos)');
+  await ffmpeg.writeFile('input.webm', new Uint8Array(await blob.arrayBuffer()));
+  await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','veryfast','-crf','23','-c:a','aac','-b:a','128k','-movflags','+faststart','output.mp4']);
+  const data = await ffmpeg.readFile('output.mp4');
+  const mp4Blob = new Blob([data.buffer], { type: 'video/mp4' });
+  downloadBlob(mp4Blob, downloadName);
+}
+
+mp4Btn.onclick=async()=>{
+  if(!recordedBlob)return;
+  mp4Btn.disabled=true;
+  filebox.style.display='block';
+  filebox.textContent='Preparando conversión MP4…';
+  try{
+    await convertBlobToMp4(recordedBlob, filename('mp4'), (msg)=>filebox.textContent=msg);
+    filebox.textContent='MP4 generado y descargado correctamente.';
+  }catch(e){
+    console.error(e);
+    filebox.textContent='No se pudo convertir. Guarda el WebM y usa el conversor de abajo o un conversor online.';
+  }finally{mp4Btn.disabled=false}
+};
+
+/* Conversor manual */
+const webmFileInput = $('webmFile');
+const convertBtn = $('convertBtn');
+const convertStatus = $('convertStatus');
+
+function setConvertStatus(type, text){
+  convertStatus.className = type;
+  convertStatus.textContent = text;
+  convertStatus.style.display = 'block';
+}
+
+webmFileInput.addEventListener('change', () => {
+  const hasFile = webmFileInput.files && webmFileInput.files.length > 0;
+  convertBtn.disabled = !hasFile;
+  if(hasFile) setConvertStatus('info', 'Archivo listo: ' + webmFileInput.files[0].name);
+  else convertStatus.style.display = 'none';
+});
+
+convertBtn.addEventListener('click', async () => {
+  const file = webmFileInput.files?.[0];
+  if(!file) return;
+  convertBtn.disabled = true;
+  setConvertStatus('info', 'Iniciando conversión...');
+  try {
+    const name = file.name.replace(/\.webm$/i, '') || 'video';
+    await convertBlobToMp4(file, name + '.mp4', (msg) => setConvertStatus('info', msg));
+    setConvertStatus('success', '? MP4 descargado correctamente.');
+  } catch (e) {
+    console.error(e);
+    setConvertStatus('error', '? Error: ' + (e.message || e) + '\nPrueba con un archivo más corto o usa un conversor online.');
+  } finally {
+    convertBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
